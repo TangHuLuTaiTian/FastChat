@@ -304,16 +304,14 @@ def chat_loop(
 
         conv.append_message(conv.roles[0], inp)
         conv.append_message(conv.roles[1], None)
+        prompt = conv.get_prompt()
 
         if is_chatglm:
             generate_stream_func = chatglm_generate_stream
-            prompt = conv.messages[conv.offset :]
         elif is_falcon:
             generate_stream_func = falcon_generate_stream
-            prompt = conv.get_prompt()
         else:
             generate_stream_func = generate_stream
-            prompt = conv.get_prompt()
 
         gen_params = {
             "model": model_path,

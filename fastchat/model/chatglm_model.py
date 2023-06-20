@@ -1,19 +1,4 @@
 import torch
-from typing import List, Tuple
-
-
-def stream_chat_token_num(tokenizer, query: str, history: List[Tuple[str, str]] = None):
-    if history is None:
-        history = []
-    if not history:
-        prompt = query
-    else:
-        prompt = ""
-        for i, (old_query, response) in enumerate(history):
-            prompt += "[Round {}]\n问：{}\n答：{}\n".format(i, old_query, response)
-        prompt += "[Round {}]\n问：{}\n答：".format(len(history), query)
-    inputs = tokenizer([prompt])
-    return sum([len(x) for x in inputs["input_ids"]])
 
 
 @torch.inference_mode()
@@ -21,7 +6,7 @@ def chatglm_generate_stream(
     model, tokenizer, params, device, context_len=2048, stream_interval=2
 ):
     """Generate text using model's chat api"""
-    messages = params["prompt"]
+    prompt = params["prompt"]
     max_new_tokens = int(params.get("max_new_tokens", 256))
     temperature = float(params.get("temperature", 1.0))
     top_p = float(params.get("top_p", 1.0))
@@ -38,24 +23,18 @@ def chatglm_generate_stream(
     if temperature > 1e-5:
         gen_kwargs["temperature"] = temperature
 
-    hist = []
-    query = ""
-    if isinstance(messages, list):  # for chat completion
-        for i in range(0, len(messages) - 2, 2):
-            hist.append((messages[i][1], messages[i + 1][1]))
-        query = messages[-2][1]
-    elif isinstance(messages, str):  # for completion
-        query = messages
-
-    input_echo_len = stream_chat_token_num(tokenizer, query, hist)
+    input_ids = tokenizer([prompt], return_tensors="pt").input_ids.to(model.device)
+    max_src_len = context_len - max_new_tokens - 8
+    input_ids = input_ids[-max_src_len:]
+    input_echo_len = len(input_ids)
 
     output = ""
     i = 0
     for i, (response, new_hist) in enumerate(
-        model.stream_chat(tokenizer, query, hist, **gen_kwargs)
+        model.stream_generate(input_ids, **gen_kwargs)
     ):
         if echo:
-            output = query + " " + response
+            output = prompt + " " + response
         else:
             output = response
 
